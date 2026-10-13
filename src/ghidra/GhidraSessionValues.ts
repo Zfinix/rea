@@ -6,6 +6,7 @@ import type { JsonValue } from "../domain/jsonValue.js";
 import { err, ok, type Result } from "../domain/result.js";
 import {
   GHIDRA_INVENTORY_OPERATIONS,
+  GHIDRA_LISTING_OPERATIONS,
   GHIDRA_NAMING_OPERATIONS,
 } from "./GhidraInventoryValues.js";
 import { GHIDRA_FUNCTION_OPERATIONS } from "./GhidraFunctionValues.js";
@@ -24,6 +25,7 @@ export const GHIDRA_SESSION_CAPABILITIES = [
 export const GHIDRA_MUTATING_OPERATIONS: ReadonlySet<string> = new Set([
   "annotate_native_function",
   ...GHIDRA_NAMING_OPERATIONS,
+  ...GHIDRA_LISTING_OPERATIONS,
 ]);
 
 // Shared wire budget: Java bounds the aggregate before serializing the handshake.

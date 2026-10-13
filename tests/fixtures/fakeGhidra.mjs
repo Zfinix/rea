@@ -412,6 +412,7 @@ const sessionInfo = ({
     "search_strings",
     "set_address_name",
     "set_addresses_names",
+    "set_code_type",
     "annotate_native_function",
     "inspect_native_data_type",
     "inspect_native_instruction",
@@ -432,6 +433,7 @@ const sessionInfo = ({
         "annotate_native_function",
         "set_address_name",
         "set_addresses_names",
+        "set_code_type",
       ].includes(value),
   ),
   target: {
