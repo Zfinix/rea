@@ -34,6 +34,7 @@ export const TOOL_EXAMPLE_OVERRIDES: Readonly<
   search_strings: { pattern: "authorization failed" },
   set_address_name: { address: "0x1000", name: "entry" },
   set_addresses_names: { names: { "0x1000": "entry" } },
+  set_code_type: { address: "0x1000", type: "data" },
   set_bookmark: { address: "0x1000" },
   set_comment: { address: "0x1000", comment: "validated entry point" },
   set_inline_comment: { address: "0x1000", comment: "calls parser" },

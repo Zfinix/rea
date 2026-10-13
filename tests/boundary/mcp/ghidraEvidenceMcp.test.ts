@@ -212,6 +212,58 @@ it("routes address naming to Ghidra with compact per-address results", async () 
   }
 });
 
+it("routes listing code-type changes to Ghidra with readback", async () => {
+  const requests: { operation: string; input: unknown }[] = [];
+  let output: unknown = null;
+  const harness = await connectGhidraMcp(
+    "ghidra-code-type",
+    (operation, input) => {
+      requests.push({ operation, input });
+      return Promise.resolve(ok(jsonValueSchema.parse(output)));
+    },
+  );
+  try {
+    const readback = {
+      address: "0x1004",
+      type: "word",
+      unit: "dw 0x1234",
+      function: "0x1000",
+    };
+    output = readback;
+    const changed = await harness.mcp.callTool({
+      name: "set_code_type",
+      arguments: { address: "0x1004", type: "data" },
+    });
+    expect(changed.isError).not.toBe(true);
+    expect(changed.structuredContent).toMatchObject({
+      normalized_result: readback,
+    });
+    expect(requests).toEqual([
+      {
+        operation: "set_code_type",
+        input: { document: null, address: "0x1004", type: "data" },
+      },
+    ]);
+    const unknown = await harness.mcp.callTool({
+      name: "set_code_type",
+      arguments: { address: "0x1004", type: "float" },
+    });
+    expect(unknown.isError).toBe(true);
+    expect(requests).toHaveLength(1);
+    output = { ...readback, type: "data" };
+    const unresolved = await harness.mcp.callTool({
+      name: "set_code_type",
+      arguments: { address: "0x1004", type: "data" },
+    });
+    expect(unresolved.isError).toBe(true);
+    expect(parseMcpToolError(unresolved)).toMatchObject({
+      error: { code: "unreadable_output" },
+    });
+  } finally {
+    await harness.close();
+  }
+});
+
 describe("Ghidra MCP evidence parity", () => {
   it("preserves provider evidence, composed parity, and capability routing", async () => {
     const harness = await connectGhidraMcp("ghidra-parity");

@@ -45,6 +45,8 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 import ghidra.app.util.headless.HeadlessScript;
+import ghidra.app.cmd.disassemble.DisassembleCommand;
+import ghidra.app.cmd.function.CreateFunctionCmd;
 import ghidra.app.decompiler.DecompInterface;
 import ghidra.app.decompiler.DecompileOptions;
 import ghidra.app.decompiler.DecompileResults;
@@ -65,8 +67,16 @@ import ghidra.program.model.block.CodeBlockReference;
 import ghidra.program.model.block.CodeBlockReferenceIterator;
 import ghidra.program.model.data.StringDataInstance;
 import ghidra.program.model.data.DataType;
+import ghidra.program.model.data.AbstractIntegerDataType;
+import ghidra.program.model.data.ByteDataType;
+import ghidra.program.model.data.DWordDataType;
+import ghidra.program.model.data.QWordDataType;
+import ghidra.program.model.data.TerminatedStringDataType;
+import ghidra.program.model.data.WordDataType;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.scalar.Scalar;
+import ghidra.program.model.listing.CodeUnit;
+import ghidra.program.model.listing.CodeUnitIterator;
 import ghidra.program.model.listing.CommentType;
 import ghidra.program.model.listing.Data;
 import ghidra.program.model.listing.DataIterator;
@@ -74,12 +84,15 @@ import ghidra.program.model.listing.Function;
 import ghidra.program.model.listing.FunctionIterator;
 import ghidra.program.model.listing.Instruction;
 import ghidra.program.model.listing.InstructionIterator;
+import ghidra.program.model.listing.Listing;
 import ghidra.program.model.listing.Variable;
+import ghidra.program.model.mem.MemoryAccessException;
 import ghidra.program.model.mem.MemoryBlock;
 import ghidra.program.model.mem.MemoryBlockSourceInfo;
 import ghidra.program.database.mem.FileBytes;
 import ghidra.program.model.address.SegmentedAddress;
 import ghidra.program.model.reloc.Relocation;
+import ghidra.program.model.util.CodeUnitInsertionException;
 import java.io.ByteArrayOutputStream;
 import ghidra.program.model.symbol.Namespace;
 import ghidra.program.model.symbol.RefType;
@@ -125,6 +138,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
         "annotate_native_function",
         "set_address_name",
         "set_addresses_names",
+        "set_code_type",
         "inspect_native_load_image",
         "read_bytes",
         "address_to_file_offset",
@@ -395,6 +409,11 @@ public final class ReaGhidraBridge extends HeadlessScript {
                 yield request.method.equals("set_address_name")
                     ? setAddressName(request.params) : setAddressesNames(request.params);
             }
+            case "set_code_type" -> {
+                if (!descriptor.transport.equals("unix-socket"))
+                    throw new RequestFailure("method_unavailable", "Windows P0 does not admit database mutation");
+                yield setCodeType(request.params);
+            }
             case "annotate_native_function" -> {
                 if (!descriptor.transport.equals("unix-socket"))
                     throw new RequestFailure("method_unavailable", "Windows P0 does not admit database mutation");
@@ -439,7 +458,8 @@ public final class ReaGhidraBridge extends HeadlessScript {
         result.add("capabilities", GSON.toJsonTree(
             java.util.Arrays.stream(CAPABILITIES)
                 .filter(value -> !readOnly || !(value.equals("annotate_native_function")
-                    || value.equals("set_address_name") || value.equals("set_addresses_names")))
+                    || value.equals("set_address_name") || value.equals("set_addresses_names")
+                    || value.equals("set_code_type")))
                 .toArray(String[]::new)
         ));
         result.add("target", target);
@@ -688,8 +708,15 @@ public final class ReaGhidraBridge extends HeadlessScript {
         requireDocument(params);
         Function function = resolveProcedure(requireString(params, "procedure"));
         InstructionScan scan = scanInstructions(function, Integer.MAX_VALUE);
+        List<String> lines = new ArrayList<>();
+        CodeUnitIterator units = currentProgram.getListing().getCodeUnits(function.getBody(), true);
+        while (units.hasNext()) {
+            monitor.checkCancelled();
+            CodeUnit unit = units.next();
+            lines.add(canonicalAddress(unit.getMinAddress()) + ": " + renderCodeUnit(unit));
+        }
         return functionObservation(
-            GSON.toJsonTree(renderAssembly(scan.instructions)),
+            GSON.toJsonTree(String.join("\n", lines)),
             noReturnCallLimitations(scan.instructions)
         );
     }
@@ -1577,6 +1604,144 @@ public final class ReaGhidraBridge extends HeadlessScript {
                 result.addProperty(request.inputAddress, success);
         }
         return result;
+    }
+
+    private static final List<String> CODE_TYPES = List.of(
+        "code", "procedure", "data", "byte", "word", "dword", "qword", "cstring", "undefined"
+    );
+    private static final int MAX_CSTRING_BYTES = 4096;
+
+    // Hopper-style Modify > Code / Procedure / Data / C string / Undefined at one address.
+    private JsonObject setCodeType(JsonObject params) throws Exception {
+        requireKeys(params, Set.of("document", "address", "type"));
+        requireDocument(params);
+        Address address = requireAddress(params, "address");
+        String type = requireString(params, "type");
+        if (!CODE_TYPES.contains(type))
+            throw new RequestFailure("invalid_request", "Unknown code type: " + type);
+        if (!currentProgram.getMemory().contains(address))
+            throw new RequestFailure("invalid_request", "Address is not mapped: " + canonicalAddress(address));
+        Listing listing = currentProgram.getListing();
+        int transaction = currentProgram.startTransaction("REA code type");
+        boolean commit = false;
+        try {
+            String applied = switch (type) {
+                case "undefined" -> {
+                    clearUnitContaining(address);
+                    if (currentProgram.getFunctionManager().getFunctionAt(address) != null)
+                        currentProgram.getFunctionManager().removeFunction(address);
+                    yield type;
+                }
+                case "code" -> {
+                    disassembleAt(address);
+                    yield type;
+                }
+                case "procedure" -> {
+                    if (currentProgram.getFunctionManager().getFunctionAt(address) == null) {
+                        if (listing.getInstructionAt(address) == null) disassembleAt(address);
+                        new CreateFunctionCmd(address).applyTo(currentProgram, monitor);
+                        if (currentProgram.getFunctionManager().getFunctionAt(address) == null)
+                            throw new RequestFailure("invalid_request", "Could not create a procedure at " + canonicalAddress(address));
+                    }
+                    yield type;
+                }
+                case "data" -> defineData(address, nextDataSize(address));
+                case "cstring" -> {
+                    defineCString(address);
+                    yield type;
+                }
+                default -> defineData(address, type);
+            };
+            invalidateAnalysisCaches();
+            CodeUnit unit = listing.getCodeUnitContaining(address);
+            Function function = currentProgram.getFunctionManager().getFunctionContaining(address);
+            JsonObject result = new JsonObject();
+            result.addProperty("address", canonicalAddress(address));
+            result.addProperty("type", applied);
+            result.addProperty("unit", unit == null ? null : renderCodeUnit(unit));
+            result.addProperty("function", function == null ? null : canonicalAddress(function.getEntryPoint()));
+            commit = true;
+            return result;
+        }
+        catch (CodeUnitInsertionException exception) {
+            throw new RequestFailure("invalid_request", "Could not change the code type at " + canonicalAddress(address) + ": " + safeMessage(exception));
+        }
+        finally {
+            currentProgram.endTransaction(transaction, commit);
+            invalidateAnalysisCaches();
+        }
+    }
+
+    private void clearUnitContaining(Address address) {
+        CodeUnit unit = currentProgram.getListing().getCodeUnitContaining(address);
+        if (unit != null)
+            currentProgram.getListing().clearCodeUnits(unit.getMinAddress(), unit.getMaxAddress(), false);
+    }
+
+    private void clearSpan(Address start, int length) {
+        Address end;
+        try {
+            end = start.addNoWrap(length - 1L);
+        }
+        catch (ghidra.program.model.address.AddressOverflowException exception) {
+            throw new RequestFailure("invalid_request", "Not enough bytes at " + canonicalAddress(start));
+        }
+        if (!currentProgram.getMemory().contains(start, end))
+            throw new RequestFailure("invalid_request", "Not enough mapped bytes at " + canonicalAddress(start));
+        CodeUnit first = currentProgram.getListing().getCodeUnitContaining(start);
+        currentProgram.getListing().clearCodeUnits(first == null ? start : first.getMinAddress(), end, false);
+    }
+
+    private void disassembleAt(Address address) {
+        Listing listing = currentProgram.getListing();
+        Instruction existing = listing.getInstructionAt(address);
+        if (existing != null) return;
+        clearUnitContaining(address);
+        DisassembleCommand command = new DisassembleCommand(address, null, true);
+        command.enableCodeAnalysis(false);
+        command.applyTo(currentProgram, monitor);
+        if (listing.getInstructionAt(address) == null)
+            throw new RequestFailure("invalid_request", "Could not disassemble at " + canonicalAddress(address));
+    }
+
+    private String nextDataSize(Address address) {
+        Data data = currentProgram.getListing().getDefinedDataAt(address);
+        if (data == null || !(data.getDataType() instanceof AbstractIntegerDataType)) return "byte";
+        return switch (data.getLength()) {
+            case 1 -> "word";
+            case 2 -> "dword";
+            case 4 -> "qword";
+            default -> "byte";
+        };
+    }
+
+    private String defineData(Address address, String size) throws CodeUnitInsertionException {
+        DataType dataType = switch (size) {
+            case "byte" -> ByteDataType.dataType;
+            case "word" -> WordDataType.dataType;
+            case "dword" -> DWordDataType.dataType;
+            case "qword" -> QWordDataType.dataType;
+            default -> throw new RequestFailure("invalid_request", "Unknown data size: " + size);
+        };
+        clearSpan(address, dataType.getLength());
+        currentProgram.getListing().createData(address, dataType);
+        return size;
+    }
+
+    private void defineCString(Address address) throws CodeUnitInsertionException {
+        int length = 0;
+        try {
+            while (currentProgram.getMemory().getByte(address.addNoWrap(length)) != 0) {
+                length++;
+                if (length >= MAX_CSTRING_BYTES)
+                    throw new RequestFailure("invalid_request", "No string terminator within " + MAX_CSTRING_BYTES + " bytes of " + canonicalAddress(address));
+            }
+        }
+        catch (MemoryAccessException | ghidra.program.model.address.AddressOverflowException exception) {
+            throw new RequestFailure("invalid_request", "No readable string terminator after " + canonicalAddress(address));
+        }
+        clearSpan(address, length + 1);
+        currentProgram.getListing().createData(address, TerminatedStringDataType.dataType, length + 1);
     }
 
     private JsonArray listDocuments(JsonObject params) {
@@ -3002,24 +3167,51 @@ public final class ReaGhidraBridge extends HeadlessScript {
         return limitations;
     }
 
-    private static String renderAssembly(List<Instruction> instructions) {
-        return String.join("\n", renderAssemblyLines(instructions));
-    }
-
     private static List<String> renderAssemblyLines(List<Instruction> instructions) {
         List<String> result = new ArrayList<>();
         for (Instruction instruction : instructions) {
-            StringBuilder line = new StringBuilder();
-            line.append(canonicalAddress(instruction.getAddress()));
-            line.append(": ");
-            line.append(instruction.getMnemonicString());
-            for (int index = 0; index < instruction.getNumOperands(); index += 1) {
-                line.append(index == 0 ? " " : ", ");
-                line.append(instruction.getDefaultOperandRepresentation(index));
-            }
-            result.add(line.toString());
+            result.add(canonicalAddress(instruction.getAddress()) + ": " + renderInstruction(instruction));
         }
         return result;
+    }
+
+    private static String renderInstruction(Instruction instruction) {
+        StringBuilder line = new StringBuilder(instruction.getMnemonicString());
+        for (int index = 0; index < instruction.getNumOperands(); index += 1) {
+            line.append(index == 0 ? " " : ", ");
+            line.append(instruction.getDefaultOperandRepresentation(index));
+        }
+        return line.toString();
+    }
+
+    private static String renderCodeUnit(CodeUnit unit) {
+        if (unit instanceof Instruction instruction) return renderInstruction(instruction);
+        Data data = (Data) unit;
+        if (!data.isDefined()) {
+            try {
+                return String.format("?? 0x%02x", data.getByte(0) & 0xff);
+            }
+            catch (MemoryAccessException exception) {
+                return "?? ??";
+            }
+        }
+        if (data.hasStringValue()) return "ds " + data.getDefaultValueRepresentation();
+        int length = data.getLength();
+        String directive = switch (length) {
+            case 1 -> "db";
+            case 2 -> "dw";
+            case 4 -> "dd";
+            case 8 -> "dq";
+            default -> null;
+        };
+        Object value = data.getValue();
+        if (directive != null && value instanceof Scalar scalar)
+            return directive + " 0x" + String.format("%0" + (length * 2) + "x", scalar.getUnsignedValue());
+        if (directive != null && value instanceof Address target)
+            return directive + " " + canonicalAddress(target);
+        String representation = data.getDefaultValueRepresentation();
+        String name = directive != null ? directive : data.getDataType().getDisplayName();
+        return representation == null || representation.isEmpty() ? name : name + " " + representation;
     }
 
     private List<Reference> collectReferences(

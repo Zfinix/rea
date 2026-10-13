@@ -6,6 +6,7 @@ import {
   rawBinaryEntryPointSchema,
 } from "../domain/rawBinary.js";
 import { nativeFunctionAnnotationsSchema } from "../domain/native/nativeFunctionAnnotations.js";
+import { nativeCodeTypeResultSchema } from "../domain/native/nativeCodeType.js";
 import { nativeLoadImageSchema } from "../domain/native/nativeLoadImage.js";
 import { nativeUiResultSchema } from "../domain/native/nativeUiObservation.js";
 import { nativeValueTraceSchema } from "../domain/native/nativeValueTrace.js";
@@ -185,6 +186,7 @@ export const officialOutputSchemas: Readonly<Record<string, z.ZodObject>> = {
   search_strings: evidenceResultOf(z.array(analysisStringSchema)),
   set_address_name: evidenceResultOf(z.boolean()),
   set_addresses_names: evidenceResultOf(z.record(z.string(), z.boolean())),
+  set_code_type: evidenceResultOf(nativeCodeTypeResultSchema),
   set_bookmark: evidenceResultOf(z.boolean()),
   set_comment: evidenceResultOf(z.boolean()),
   set_inline_comment: evidenceResultOf(z.boolean()),

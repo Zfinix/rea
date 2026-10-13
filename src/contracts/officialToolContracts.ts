@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { nativeFunctionAnnotationsInputSchema } from "../domain/native/nativeFunctionAnnotations.js";
+import { nativeCodeTypeSchema } from "../domain/native/nativeCodeType.js";
 
 import { officialOutputSchemas } from "./toolOutputSchemaGroups.js";
 import { requireOutputSchema } from "./toolOutputSchemaPrimitives.js";
@@ -208,6 +209,11 @@ export const OFFICIAL_TOOL_CONTRACTS = [
     "set_addresses_names",
     "Assign analyst names to multiple mapped addresses in one call and return per-address edit/readback success booleans. Hopper validates mapped destinations, native string representations, its 1024 UTF-16 code-unit symbol-name limit, and unique destinations/names before applying edits. Existing labels may move or swap only among explicitly selected addresses; unselected label owners remain unchanged. This mutates analysis metadata; verify failures individually.",
     z.object({ names: z.record(z.string(), z.string()), document }),
+  ),
+  official(
+    "set_code_type",
+    "Change how one mapped hexadecimal address is listed: code disassembles there, procedure also creates a function (no-op when one already begins there), data defines an integer that steps byte, word, dword, qword on repeat, byte/word/dword/qword define exactly that size, cstring defines a NUL-terminated string, and undefined clears the unit and removes a function that begins there. Returns the resolved type, the unit now at the address, and its containing function entry. This mutates the session analysis database; original executable bytes are unchanged.",
+    z.object({ address, type: nativeCodeTypeSchema, document }),
   ),
   official(
     "set_bookmark",

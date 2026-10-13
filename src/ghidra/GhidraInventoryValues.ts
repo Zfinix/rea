@@ -10,12 +10,17 @@ import {
   functionBodyEntryAgrees,
 } from "../domain/hopperValues.js";
 import { jsonValueSchema, type JsonValue } from "../domain/jsonValue.js";
+import {
+  nativeCodeTypeResultSchema,
+  nativeCodeTypeSchema,
+} from "../domain/native/nativeCodeType.js";
 import { err, ok, type Result } from "../domain/result.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 
 /**
  * Direct inventory operations admitted by the Ghidra adapter. All are reads
- * except the naming operations, which edit the ephemeral session database.
+ * except the naming and code-type operations, which edit the ephemeral
+ * session database.
  */
 export const GHIDRA_INVENTORY_OPERATIONS = [
   "inspect_native_load_image",
@@ -33,12 +38,18 @@ export const GHIDRA_INVENTORY_OPERATIONS = [
   "search_strings",
   "set_address_name",
   "set_addresses_names",
+  "set_code_type",
 ] as const;
 
 /** Inventory operations that write analyst names into the session database. */
 export const GHIDRA_NAMING_OPERATIONS = [
   "set_address_name",
   "set_addresses_names",
+] as const satisfies readonly GhidraInventoryOperation[];
+
+/** Inventory operations that change how listing bytes are typed. */
+export const GHIDRA_LISTING_OPERATIONS = [
+  "set_code_type",
 ] as const satisfies readonly GhidraInventoryOperation[];
 
 /** One direct inventory operation implemented by the packaged Java bridge. */
@@ -107,6 +118,9 @@ const inputSchemas = {
       (value) => Object.keys(value.names).length > 0,
       "Supply at least one address name",
     ),
+  set_code_type: z
+    .object({ document, address: explicitAddress, type: nativeCodeTypeSchema })
+    .strict(),
 } satisfies Readonly<Record<GhidraInventoryOperation, z.ZodType>>;
 
 /** Validate and default one provider request before it crosses the socket. */
@@ -307,6 +321,10 @@ const resultSchemas = {
   search_strings: z.array(searchItem),
   set_address_name: z.boolean(),
   set_addresses_names: z.record(z.string(), z.boolean()),
+  set_code_type: nativeCodeTypeResultSchema.extend({
+    address: canonicalAddress,
+    function: canonicalAddress.nullable(),
+  }),
 } satisfies Readonly<Record<GhidraInventoryOperation, z.ZodType>>;
 
 /** Validate exact Java-bridge output before creating Evidence. */

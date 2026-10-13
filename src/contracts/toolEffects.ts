@@ -360,6 +360,11 @@ export const TOOL_EFFECTS: Readonly<Record<string, ToolEffects>> = {
     mutatesSession: true,
     mayDiscardData: true,
   }),
+  set_code_type: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    mayDiscardData: true,
+  }),
   set_bookmark: effects({
     mutatesTarget: true,
     mutatesSession: true,

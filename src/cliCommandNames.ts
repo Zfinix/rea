@@ -177,6 +177,7 @@ export const MCP_TOOLS_WITHOUT_DEDICATED_CLI = Object.freeze([
   "resolve_containing_procedure",
   "set_address_name",
   "set_addresses_names",
+  "set_code_type",
   "set_bookmark",
   "set_comment",
   "set_inline_comment",

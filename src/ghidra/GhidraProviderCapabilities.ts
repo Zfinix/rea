@@ -80,6 +80,12 @@ export const limitationsFor = (operation: string): readonly string[] => {
         "set_addresses_names applies each address in its own transaction and reports per-address success; invalid names, unmapped addresses, and readback mismatches roll back only that address.",
         "Metadata edits invalidate immutable analysis snapshots and are discarded on close; this is not a saved Ghidra project.",
       ];
+    case "set_code_type":
+      return [
+        ...common,
+        "code and procedure disassemble with Ghidra flow following; procedure then creates a function and is a no-op when one already begins there. data steps an integer unit that begins at the address through byte, word, dword and qword, and otherwise defines a byte; byte, word, dword and qword define exactly that size. cstring defines a NUL-terminated string found within 4096 bytes. undefined clears the containing unit and removes a function that begins at the address.",
+        "Each change runs in one transaction that rolls back on failure. Listing edits invalidate immutable analysis snapshots and are discarded on close; this is not a saved Ghidra project.",
+      ];
     case "inspect_native_load_image":
       return [
         ...common,

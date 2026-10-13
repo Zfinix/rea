@@ -132,9 +132,14 @@ describe("Ghidra mutation handshake", () => {
       "annotate_native_function",
       "set_address_name",
       "set_addresses_names",
+      "set_code_type",
     ]);
     const value = session();
-    for (const naming of ["set_address_name", "set_addresses_names"]) {
+    for (const naming of [
+      "set_address_name",
+      "set_addresses_names",
+      "set_code_type",
+    ]) {
       expect(value.capabilities).toContain(naming);
       expect(
         parseGhidraSessionInfo(
