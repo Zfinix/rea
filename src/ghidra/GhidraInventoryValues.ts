@@ -32,6 +32,10 @@ import {
 } from "../domain/native/functionBody.js";
 import { procedureIdentitySchema } from "../domain/native/procedureInfo.js";
 import { jsonValueSchema, type JsonValue } from "../domain/jsonValue.js";
+import {
+  nativeCodeTypeResultSchema,
+  nativeCodeTypeSchema,
+} from "../domain/native/nativeCodeType.js";
 import { err, ok, type Result } from "../domain/result.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 
@@ -42,6 +46,11 @@ export const GHIDRA_NAMING_OPERATIONS = [
 ] as const satisfies readonly GhidraInventoryOperation[];
 
 type GhidraNamingOperation = (typeof GHIDRA_NAMING_OPERATIONS)[number];
+
+/** Inventory operations that change how listing bytes are typed. */
+export const GHIDRA_LISTING_OPERATIONS = [
+  "set_code_type",
+] as const satisfies readonly GhidraInventoryOperation[];
 
 /** One direct inventory operation implemented by the packaged Java bridge. */
 export type GhidraInventoryOperation =
@@ -118,6 +127,9 @@ const inputSchemas = {
       (value) => Object.keys(value.names).length > 0,
       "Supply at least one address name",
     ),
+  set_code_type: z
+    .object({ document, address: explicitAddress, type: nativeCodeTypeSchema })
+    .strict(),
 } satisfies Readonly<Record<GhidraInventoryOperation, z.ZodType>>;
 
 /** Parsed naming identity accompanies wire parameters without crossing the socket. */
@@ -355,6 +367,10 @@ const resultSchemas = {
   resolve_containing_procedure: containingProcedure,
   search_procedures: z.array(procedureMatchItem),
   search_strings: z.array(stringItem),
+  set_code_type: nativeCodeTypeResultSchema.extend({
+    address: nativeAddressObservationSchema,
+    function: nativeAddressObservationSchema.nullable(),
+  }),
 } satisfies Readonly<
   Record<Exclude<GhidraInventoryOperation, GhidraNamingOperation>, z.ZodType>
 >;

@@ -128,6 +128,12 @@ export const limitationsFor = (
           ? "Metadata edits invalidate immutable analysis snapshots. Normal close saves edits to the owned checkpoint; cancellation or process failure can lose edits after the last successful save."
           : "Metadata edits invalidate immutable analysis snapshots and are discarded on close; this is not a saved Ghidra project.",
       ];
+    case "set_code_type":
+      return [
+        ...common,
+        "code and procedure disassemble with Ghidra flow following; procedure then creates a function and is a no-op when one already begins there. data steps an integer unit that begins at the address through byte, word, dword and qword, and otherwise defines a byte; byte, word, dword and qword define exactly that size. cstring defines a NUL-terminated string found within 4096 bytes. undefined clears the containing unit and removes a function that begins at the address.",
+        "Each change runs in one transaction that rolls back on failure. Listing edits invalidate immutable analysis snapshots and are discarded on close; this is not a saved Ghidra project.",
+      ];
     case "inspect_native_load_image":
       return [...common, ghidraLoadImageVerificationNote()];
     case "read_bytes":

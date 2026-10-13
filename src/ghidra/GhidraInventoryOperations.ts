@@ -1,6 +1,6 @@
 /**
  * Direct inventory operations admitted by the Ghidra adapter. All are reads
- * except the naming operations, which edit the ephemeral session database.
+ * except the naming and code-type operations, which edit the ephemeral session database.
  */
 export const GHIDRA_INVENTORY_OPERATIONS = [
   "read_binary_inventory_summary",
@@ -20,4 +20,5 @@ export const GHIDRA_INVENTORY_OPERATIONS = [
   "search_strings",
   "set_address_name",
   "set_addresses_names",
+  "set_code_type",
 ] as const;
