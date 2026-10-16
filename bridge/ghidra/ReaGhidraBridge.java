@@ -105,6 +105,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
     private static final int MAX_HIGH_PCODE_OPS = 3000;
     private static final int MAX_HIGH_PCODE_INPUTS_PER_OP = 64;
     private static final int MAX_HIGH_PCODE_DEF_USE_EDGES = 12000;
+    private static final int DECOMPILATION_TIMEOUT_SECONDS = 30;
     private static final Gson GSON = new GsonBuilder().serializeNulls().create();
     private static final Set<String> DESCRIPTOR_KEYS = Set.of(
         "transport",
@@ -2909,9 +2910,15 @@ public final class ReaGhidraBridge extends HeadlessScript {
         }
         DecompileResults results = decompiler.decompileFunction(
             function,
-            0,
+            DECOMPILATION_TIMEOUT_SECONDS,
             monitor
         );
+        if (results.isTimedOut()) {
+            throw new RequestFailure(
+                "decompile_timeout",
+                "Ghidra decompilation exceeded " + DECOMPILATION_TIMEOUT_SECONDS + " seconds"
+            );
+        }
         if (results.isCancelled()) {
             throw new RequestFailure("decompile_cancelled", "Ghidra decompilation was cancelled");
         }
