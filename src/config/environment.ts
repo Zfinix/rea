@@ -112,6 +112,11 @@ const environmentSchema = z.object({
     .min(1)
     .refine(isAbsolute, "REA_GHIDRA_SEED_FILE must be absolute")
     .optional(),
+  REA_GHIDRA_ANALYSIS_CACHE: z
+    .string()
+    .min(1)
+    .refine(isAbsolute, "REA_GHIDRA_ANALYSIS_CACHE must be absolute")
+    .optional(),
   REA_ILSPY_CMD_PATH: z
     .string()
     .min(1)

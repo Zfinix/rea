@@ -1460,6 +1460,22 @@ any real abort. To silence that analyzer, set
 executables that miss the startup deadline instead, raise
 `REA_GHIDRA_STARTUP_TIMEOUT_MS` and the [Ghidra heap](#ghidra-heap-and-cpu-controls).
 
+To analyze a target once and reuse the result in later sessions:
+
+```bash
+export REA_GHIDRA_ANALYSIS_CACHE=/absolute/path/to/ghidra-analysis
+```
+
+After auto-analysis and the post-analysis repairs, a post-script packs the
+Program into `<target sha256>-<profile digest>.gzf` in that directory, writing a
+partial file and moving it into place. A later session whose target and analysis
+profile match imports that file with `-noanalysis`, so it serves the same
+Program without analyzing again; any change to the target bytes, Ghidra version,
+language, seeds or disabled analyzers selects a different file. A timed-out
+analysis is not packed, and a failed pack does not fail the session. DOS, raw
+and PSP imports never use the cache. REA does not remove old files; delete the
+directory to reclaim space.
+
 ### Ghidra heap and CPU controls
 
 Set resource controls in the environment that launches the CLI or MCP server,

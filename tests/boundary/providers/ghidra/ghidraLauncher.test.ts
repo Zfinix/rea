@@ -350,6 +350,102 @@ describe("Ghidra headless launcher", () => {
   });
 });
 
+describe("Ghidra packed analysis", () => {
+  it("packs the analyzed Program after the repairs and before the bridge", () => {
+    const arguments_ = ghidraHeadlessArguments({
+      platform: "darwin",
+      projectRoot: "/tmp/project",
+      targetPath: "/tmp/target",
+      bridgeScriptPath: "/package/bridge/ReaGhidraBridge.java",
+      descriptorPath: "/tmp/session.json",
+      ghidraLogPath: "/tmp/ghidra.log",
+      scriptLogPath: "/tmp/script.log",
+      mipsSoftFloat: true,
+      analysisCache: { path: "/cache/a-b.gzf", reuse: false },
+    });
+    const save = arguments_.indexOf(
+      "/package/bridge/ReaGhidraSaveAnalysis.java",
+    );
+    expect(arguments_[save - 1]).toBe("-postScript");
+    expect(arguments_[save + 1]).toBe("/cache/a-b.gzf");
+    expect(
+      arguments_.indexOf("/package/bridge/ReaGhidraNoReturnFix.java"),
+    ).toBeLessThan(save);
+    expect(
+      arguments_.indexOf("/package/bridge/ReaGhidraMipsSoftFloat.java"),
+    ).toBeLessThan(save);
+    expect(save).toBeLessThan(
+      arguments_.indexOf("/package/bridge/ReaGhidraBridge.java"),
+    );
+    expectOptions(arguments_, [["-import", "/tmp/target"]]);
+    expect(arguments_).not.toContain("-noanalysis");
+  });
+  it("imports a packed Program without analysis or preparation scripts", () => {
+    const arguments_ = ghidraHeadlessArguments({
+      platform: "darwin",
+      projectRoot: "/tmp/project",
+      targetPath: "/tmp/target",
+      bridgeScriptPath: "/package/bridge/ReaGhidraBridge.java",
+      descriptorPath: "/tmp/session.json",
+      ghidraLogPath: "/tmp/ghidra.log",
+      scriptLogPath: "/tmp/script.log",
+      disabledAnalyzers: ["Objective-C Message Analyzer"],
+      seedPath: "/tmp/seeds.tsv",
+      languageOverride: { languageId: "AARCH64:LE:64:AppleSilicon" },
+      analysisCache: { path: "/cache/a-b.gzf", reuse: true },
+    });
+    expect(arguments_).toEqual([
+      "/tmp/project",
+      "rea-project",
+      "-import",
+      "/cache/a-b.gzf",
+      "-noanalysis",
+      "-readOnly",
+      "-deleteProject",
+      "-log",
+      "/tmp/ghidra.log",
+      "-scriptlog",
+      "/tmp/script.log",
+      "-scriptPath",
+      "/package/bridge",
+      "-postScript",
+      "/package/bridge/ReaGhidraBridge.java",
+      "/tmp/session.json",
+    ]);
+  });
+  it("refuses a packed analysis for DOS, raw and PSP imports", () => {
+    const base = {
+      platform: "linux" as const,
+      projectRoot: "/tmp/project",
+      targetPath: "/tmp/target",
+      bridgeScriptPath: "/package/bridge/ReaGhidraBridge.java",
+      descriptorPath: "/tmp/session.json",
+      ghidraLogPath: "/tmp/ghidra.log",
+      scriptLogPath: "/tmp/script.log",
+    };
+    for (const special of [
+      { psp: true as const },
+      { dosMz: true as const },
+      { dosCom: true as const },
+      {
+        rawBinary: {
+          languageId: "x86:LE:32:default",
+          compilerSpecId: "default",
+          baseAddr: "0x1000",
+        },
+      },
+    ])
+      for (const reuse of [true, false])
+        expect(() =>
+          ghidraHeadlessArguments({
+            ...base,
+            ...special,
+            analysisCache: { path: "/cache/a-b.gzf", reuse },
+          }),
+        ).toThrow(/ordinary import/u);
+  });
+});
+
 describe("Ghidra configured import language and seeds", () => {
   const base = {
     platform: "darwin" as const,

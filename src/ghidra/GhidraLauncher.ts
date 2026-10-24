@@ -7,7 +7,7 @@ import {
 } from "./GhidraAnalysisSeeds.js";
 import type { GhidraLanguageOverride } from "../config/ghidraLanguageOverride.js";
 import { snapshotEnvironment } from "../process/snapshotEnvironment.js";
-import { mkdir, readFile, realpath } from "node:fs/promises";
+import { mkdir, readFile, realpath, stat } from "node:fs/promises";
 import { basename, dirname, join, posix, win32 } from "node:path";
 
 import { writeGhidraRuntimeFile } from "./GhidraRuntimeFile.js";
@@ -251,6 +251,8 @@ export interface GhidraHeadlessLauncherOptions {
   readonly pspExtension?: GhidraPspExtension;
   /** Remap typed float storage for the soft-float o32 ABI after analysis. */
   readonly mipsSoftFloat?: true;
+  /** Absolute directory of packed analyzed Programs, keyed by target and profile digest. */
+  readonly analysisCacheDirectory?: string;
   /** Spawn seam for provider-boundary lifecycle tests. */
   readonly spawnProcess?: typeof spawnOwnedProviderProcess;
   /** LaunchSupport probe seam for Java-free launcher fixtures. */
@@ -408,6 +410,11 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
             cause: options.signal?.reason,
           }),
         );
+      const analysisCache = await ghidraAnalysisCache(
+        this.options,
+        session,
+        psp !== undefined,
+      );
       const headlessArguments = ghidraHeadlessArguments({
         platform,
         ...(psp === undefined ? {} : { psp: true as const }),
@@ -451,6 +458,7 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
         ...(this.options.disabledAnalyzers === undefined
           ? {}
           : { disabledAnalyzers: this.options.disabledAnalyzers }),
+        ...(analysisCache === undefined ? {} : { analysisCache }),
       });
       const scriptCommand = ghidraHeadlessCommand({
         environment: this.options.environment,
@@ -660,6 +668,42 @@ export class GhidraHeadlessLauncher implements GhidraLauncher {
   }
 }
 
+const SHA256_HEX = /^[0-9a-f]{64}$/u;
+
+/**
+ * Where this target's analyzed Program is packed for reuse, and whether a pack
+ * already exists. Only ordinary imports qualify: the DOS, raw and PSP lanes
+ * prepare the Program in ways a packed import would not repeat.
+ */
+const ghidraAnalysisCache = async (
+  options: GhidraHeadlessLauncherOptions,
+  session: GhidraLaunchSession,
+  psp: boolean,
+): Promise<GhidraAnalysisCache | undefined> => {
+  const directory = options.analysisCacheDirectory;
+  if (
+    directory === undefined ||
+    psp ||
+    options.existingProject !== undefined ||
+    options.gamecubeDol !== undefined ||
+    options.dosMz === true ||
+    options.dosCom === true ||
+    options.rawBinary !== undefined ||
+    !SHA256_HEX.test(session.targetSha256) ||
+    !SHA256_HEX.test(session.profileDigest)
+  )
+    return undefined;
+  const path = join(
+    directory,
+    `${session.targetSha256}-${session.profileDigest}.gzf`,
+  );
+  const packed = await stat(path).then(
+    (found) => found.isFile() && found.size > 0,
+    () => false,
+  );
+  return { path, reuse: packed };
+};
+
 const ownedGhidraLaunch = (
   spawned: SpawnedOwnedProviderProcess,
   paths: ReturnType<typeof ghidraRuntimePaths>,
@@ -783,6 +827,14 @@ export interface GhidraHeadlessArgumentOptions {
   readonly disabledAnalyzers?: readonly string[];
   /** Canonical seed snapshot passed to the pre-analysis seed script. */
   readonly seedPath?: string;
+  /** Import a packed analyzed Program, or pack this one after analysis. */
+  readonly analysisCache?: GhidraAnalysisCache;
+}
+
+/** A packed analyzed Program: `reuse` imports it without analysis, otherwise analysis packs it there. */
+export interface GhidraAnalysisCache {
+  readonly path: string;
+  readonly reuse: boolean;
 }
 
 type ExistingProjectOptions = Pick<
@@ -915,6 +967,37 @@ export const ghidraHeadlessArguments = (
     throw new Error(
       "A raw-binary import cannot be combined with a DOS import.",
     );
+  const cache = options.analysisCache;
+  if (
+    cache !== undefined &&
+    (options.psp === true ||
+      existing !== undefined ||
+      gamecubeDol !== undefined ||
+      options.dosMz === true ||
+      options.dosCom === true ||
+      rawBinary !== undefined)
+  )
+    throw new Error("A packed analysis applies only to an ordinary import.");
+  // The pack already holds the analyzed, repaired Program and its options.
+  if (cache?.reuse === true)
+    return [
+      options.projectRoot,
+      "rea-project",
+      "-import",
+      cache.path,
+      "-noanalysis",
+      "-readOnly",
+      "-deleteProject",
+      "-log",
+      options.ghidraLogPath,
+      "-scriptlog",
+      options.scriptLogPath,
+      "-scriptPath",
+      bridgeDirectory,
+      "-postScript",
+      options.bridgeScriptPath,
+      options.descriptorPath,
+    ];
   return [
     options.projectRoot,
     existing?.projectName ?? "rea-project",
@@ -1053,6 +1136,14 @@ export const ghidraHeadlessArguments = (
           scriptPath.join(bridgeDirectory, GHIDRA_BRIDGE_SOURCES.mipsSoftFloat),
         ]
       : []),
+    // Packed last, so a reused Program matches what this session serves.
+    ...(cache === undefined
+      ? []
+      : [
+          "-postScript",
+          scriptPath.join(bridgeDirectory, GHIDRA_BRIDGE_SOURCES.saveAnalysis),
+          cache.path,
+        ]),
     "-postScript",
     // Ghidra checks the caller's cwd before scriptPath for a basename. Select
     // the packaged source explicitly so unrelated entries cannot shadow it.
