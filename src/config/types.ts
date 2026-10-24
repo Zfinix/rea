@@ -39,6 +39,8 @@ export interface AppConfig {
   readonly ghidraExistingProject?: GhidraProjectSelection;
   /** Opt-in storage for checkpoints of REA-owned Ghidra Programs. */
   readonly ghidraCheckpointDirectory?: string;
+  /** Directory where analyzed Programs are packed and reused across sessions. */
+  readonly ghidraAnalysisCache?: string;
   readonly ghidraNativeAotJar?: string;
   readonly ilspyCmdPath: string | undefined;
   readonly hopperLauncherPath: string;

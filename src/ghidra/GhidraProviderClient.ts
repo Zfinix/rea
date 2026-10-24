@@ -665,6 +665,9 @@ export const createGhidraProviderClient = (input: {
         ? {}
         : { decompileTimeoutSeconds: launcherDecompileTimeout }),
       ...(seeds === undefined ? {} : { analysisSeeds: seeds }),
+      ...(config.ghidraAnalysisCache === undefined
+        ? {}
+        : { analysisCacheDirectory: config.ghidraAnalysisCache }),
       platform: installation.platform,
       ...(extensions.length === 0 ? {} : { analysisExtensions: extensions }),
     }),
