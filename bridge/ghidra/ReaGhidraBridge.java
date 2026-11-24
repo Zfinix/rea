@@ -83,6 +83,9 @@ import ghidra.program.model.data.DWordDataType;
 import ghidra.program.model.data.QWordDataType;
 import ghidra.program.model.data.TerminatedStringDataType;
 import ghidra.program.model.data.WordDataType;
+import ghidra.program.model.data.DataTypeConflictHandler;
+import ghidra.program.model.data.DataTypeManager;
+import ghidra.app.util.cparser.C.CParser;
 import ghidra.program.model.lang.Register;
 import ghidra.program.model.scalar.Scalar;
 import ghidra.program.model.listing.CodeUnit;
@@ -158,6 +161,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
         "set_address_name",
         "set_addresses_names",
         "set_code_type",
+        "define_c_type",
         "inspect_native_load_image",
         "read_bytes",
         "search_bytes",
@@ -521,6 +525,11 @@ public final class ReaGhidraBridge extends HeadlessScript {
                     throw new RequestFailure("method_unavailable", "Windows P0 does not admit database mutation");
                 yield setCodeType(request.params);
             }
+            case "define_c_type" -> {
+                if (!descriptor.transport.equals("unix-socket"))
+                    throw new RequestFailure("method_unavailable", "Windows P0 does not admit database mutation");
+                yield defineCType(request.params);
+            }
             case "annotate_native_function" -> {
                 if (!descriptor.transport.equals("unix-socket"))
                     throw new RequestFailure("method_unavailable", "Windows P0 does not admit database mutation");
@@ -534,7 +543,7 @@ public final class ReaGhidraBridge extends HeadlessScript {
     }
 
     private static boolean isMutatingOperation(String method) {
-        return method.equals("annotate_native_function") || method.equals("set_address_name") || method.equals("set_addresses_names") || method.equals("set_code_type");
+        return method.equals("annotate_native_function") || method.equals("set_address_name") || method.equals("set_addresses_names") || method.equals("set_code_type") || method.equals("define_c_type");
     }
 
     /** Internal lifecycle request: the destination is inside this owned runtime. */
@@ -2415,6 +2424,57 @@ public final class ReaGhidraBridge extends HeadlessScript {
         }
         catch (CodeUnitInsertionException exception) {
             throw new RequestFailure("invalid_request", "Could not change the code type at " + canonicalAddress(address) + ": " + safeMessage(exception));
+        }
+        finally {
+            currentProgram.endTransaction(transaction, commit);
+            invalidateAnalysisCaches();
+        }
+    }
+
+    /** Parses one C declaration into the program's types, replacing a same-named type, and defines it at an address when one is given. */
+    private JsonObject defineCType(JsonObject params) throws Exception {
+        boolean placed = params.has("address");
+        requireKeys(params, placed ? Set.of("document", "declaration", "address") : Set.of("document", "declaration"));
+        requireDocument(params);
+        String declaration = requireString(params, "declaration");
+        Address address = placed ? requireAddress(params, "address") : null;
+        if (address != null && !currentProgram.getMemory().contains(address))
+            throw new RequestFailure("invalid_request", "Address is not mapped: " + canonicalAddress(address));
+        DataTypeManager types = currentProgram.getDataTypeManager();
+        int transaction = currentProgram.startTransaction("REA C type");
+        boolean commit = false;
+        try {
+            DataType parsed;
+            try {
+                parsed = new CParser(types).parse(declaration.trim().endsWith(";") ? declaration : declaration + ";");
+            }
+            catch (Exception exception) {
+                throw new RequestFailure("invalid_request", "Could not read that C: " + safeMessage(exception));
+            }
+            catch (Error error) {
+                throw new RequestFailure("invalid_request", "Could not read that C: " + String.valueOf(error.getMessage()));
+            }
+            if (parsed == null)
+                throw new RequestFailure("invalid_request", "The C has no struct, union, enum or typedef in it");
+            DataType added = types.addDataType(parsed, DataTypeConflictHandler.REPLACE_HANDLER);
+            CodeUnit unit = null;
+            if (address != null) {
+                if (added.getLength() <= 0)
+                    throw new RequestFailure("invalid_request", added.getName() + " has no fixed size, so it can't be placed at an address");
+                clearSpan(address, added.getLength());
+                currentProgram.getListing().createData(address, added);
+                unit = currentProgram.getListing().getCodeUnitContaining(address);
+            }
+            JsonObject result = new JsonObject();
+            result.addProperty("name", added.getName());
+            result.addProperty("size", added.getLength());
+            result.addProperty("address", address == null ? null : canonicalAddress(address));
+            result.addProperty("unit", unit == null ? null : renderCodeUnit(unit));
+            commit = true;
+            return result;
+        }
+        catch (CodeUnitInsertionException exception) {
+            throw new RequestFailure("invalid_request", "Could not place the type at " + (address == null ? "" : canonicalAddress(address)) + ": " + safeMessage(exception));
         }
         finally {
             currentProgram.endTransaction(transaction, commit);

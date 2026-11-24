@@ -4,6 +4,7 @@ import { z } from "zod";
 import { jsonRecordSchema } from "../domain/jsonRecord.js";
 import { nativeFunctionAnnotationsInputSchema } from "../domain/native/nativeFunctionAnnotations.js";
 import { nativeCodeTypeSchema } from "../domain/native/nativeCodeType.js";
+import { nativeCDeclarationSchema } from "../domain/native/nativeCType.js";
 
 import { officialOutputSchemas } from "./toolOutputSchemaGroups.js";
 import {
@@ -255,6 +256,19 @@ export const OFFICIAL_TOOL_CONTRACTS = [
     "set_code_type",
     "Change how one mapped hexadecimal address is listed: code disassembles there, procedure also creates a function (no-op when one already begins there), data defines an integer that steps byte, word, dword, qword on repeat, byte/word/dword/qword define exactly that size, cstring defines a NUL-terminated string, and undefined clears the unit and removes a function that begins there. Returns the resolved type, the unit now at the address, and its containing function entry. This mutates the session analysis database; original executable bytes are unchanged.",
     z.object({ address, type: nativeCodeTypeSchema, document }),
+  ),
+  official(
+    "define_c_type",
+    "Add one C declaration (struct, union, enum or typedef) to the program's data types, replacing a type of the same name, and when an address is given also define data of that type at that mapped hexadecimal address. Declarations may use types the program already has. Returns the type's name, size in bytes, and the unit now at the address. This mutates the session analysis database; original executable bytes are unchanged.",
+    z.object({
+      declaration: nativeCDeclarationSchema,
+      address: address
+        .optional()
+        .describe(
+          "A mapped hexadecimal address to apply the type at; leave it out to only add the type",
+        ),
+      document,
+    }),
   ),
   official(
     "set_bookmark",

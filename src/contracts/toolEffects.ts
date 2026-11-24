@@ -588,6 +588,11 @@ const TOOL_EFFECT_AUDIT: Readonly<Record<string, EffectAudit>> = {
     mutatesSession: true,
     mayDiscardData: true,
   }),
+  define_c_type: effects({
+    mutatesTarget: true,
+    mutatesSession: true,
+    mayDiscardData: true,
+  }),
   set_code_type: effects({
     mutatesTarget: true,
     mutatesSession: true,

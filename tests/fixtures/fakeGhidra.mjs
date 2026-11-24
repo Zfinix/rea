@@ -626,6 +626,7 @@ const sessionInfo = ({
     "set_address_name",
     "set_addresses_names",
     "set_code_type",
+    "define_c_type",
     "annotate_native_function",
     "inspect_native_data_type",
     "inspect_native_instruction",
@@ -647,6 +648,7 @@ const sessionInfo = ({
         "set_address_name",
         "set_addresses_names",
         "set_code_type",
+        "define_c_type",
       ].includes(value),
   ),
   target: {

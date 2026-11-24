@@ -37,6 +37,9 @@ export const TOOL_EXAMPLE_OVERRIDES: Readonly<
   set_address_name: { address: "0x1000", name: "entry" },
   set_addresses_names: { names: { "0x1000": "entry" } },
   set_code_type: { address: "0x1000", type: "data" },
+  define_c_type: {
+    declaration: "struct header { int magic; short version; };",
+  },
   set_bookmark: { address: "0x1000" },
   set_comment: { address: "0x1000", comment: "validated entry point" },
   set_inline_comment: { address: "0x1000", comment: "calls parser" },

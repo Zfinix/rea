@@ -50,6 +50,7 @@ import {
 import { liveBinaryTargetSummaryVariants } from "../domain/liveBinaryTargetSummary.js";
 import { nativeFunctionAnnotationsSchema } from "../domain/native/nativeFunctionAnnotations.js";
 import { nativeCodeTypeResultSchema } from "../domain/native/nativeCodeType.js";
+import { nativeCTypeResultSchema } from "../domain/native/nativeCType.js";
 import { nativeLoadImageSchema } from "../domain/native/nativeLoadImage.js";
 import { nativeUiResultSchema } from "../domain/native/nativeUiObservation.js";
 import { nativeValueTraceSchema } from "../domain/native/nativeValueTrace.js";
@@ -262,6 +263,7 @@ export const officialOutputSchemas = {
   set_address_name: evidenceResultOf(z.boolean()),
   set_addresses_names: evidenceResultOf(jsonRecordSchema(z.boolean())),
   set_code_type: evidenceResultOf(nativeCodeTypeResultSchema),
+  define_c_type: evidenceResultOf(nativeCTypeResultSchema),
   set_bookmark: evidenceResultOf(z.boolean()),
   set_comment: evidenceResultOf(z.boolean()),
   set_inline_comment: evidenceResultOf(z.boolean()),

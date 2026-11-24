@@ -21,4 +21,5 @@ export const GHIDRA_INVENTORY_OPERATIONS = [
   "set_address_name",
   "set_addresses_names",
   "set_code_type",
+  "define_c_type",
 ] as const;

@@ -255,6 +255,7 @@ describe("Ghidra mutation handshake", () => {
   it("treats address naming as database mutation", () => {
     expect([...GHIDRA_MUTATING_OPERATIONS].sort()).toEqual([
       "annotate_native_function",
+      "define_c_type",
       "set_address_name",
       "set_addresses_names",
       "set_code_type",
@@ -264,6 +265,7 @@ describe("Ghidra mutation handshake", () => {
       "set_address_name",
       "set_addresses_names",
       "set_code_type",
+      "define_c_type",
     ]) {
       expect(value.capabilities).toContain(naming);
       expect(

@@ -36,6 +36,10 @@ import {
   nativeCodeTypeResultSchema,
   nativeCodeTypeSchema,
 } from "../domain/native/nativeCodeType.js";
+import {
+  nativeCDeclarationSchema,
+  nativeCTypeResultSchema,
+} from "../domain/native/nativeCType.js";
 import { err, ok, type Result } from "../domain/result.js";
 import { analysisInputErrorFromIssues } from "../domain/inputIssueProjection.js";
 
@@ -50,6 +54,7 @@ type GhidraNamingOperation = (typeof GHIDRA_NAMING_OPERATIONS)[number];
 /** Inventory operations that change how listing bytes are typed. */
 export const GHIDRA_LISTING_OPERATIONS = [
   "set_code_type",
+  "define_c_type",
 ] as const satisfies readonly GhidraInventoryOperation[];
 
 /** One direct inventory operation implemented by the packaged Java bridge. */
@@ -129,6 +134,13 @@ const inputSchemas = {
     ),
   set_code_type: z
     .object({ document, address: explicitAddress, type: nativeCodeTypeSchema })
+    .strict(),
+  define_c_type: z
+    .object({
+      document,
+      declaration: nativeCDeclarationSchema,
+      address: explicitAddress.optional(),
+    })
     .strict(),
 } satisfies Readonly<Record<GhidraInventoryOperation, z.ZodType>>;
 
@@ -370,6 +382,9 @@ const resultSchemas = {
   set_code_type: nativeCodeTypeResultSchema.extend({
     address: nativeAddressObservationSchema,
     function: nativeAddressObservationSchema.nullable(),
+  }),
+  define_c_type: nativeCTypeResultSchema.extend({
+    address: nativeAddressObservationSchema.nullable(),
   }),
 } satisfies Readonly<
   Record<Exclude<GhidraInventoryOperation, GhidraNamingOperation>, z.ZodType>
